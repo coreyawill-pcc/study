@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Virtual Sports Bra (prototype)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<style>
+  :root {
+    --wall: #E4E2DD;
+    --ink: #1D2526;
+    --muted: #5A6566;
+    --green: #2E5B4F;
+    --brass: #A8844E;
+    --card: #F7F6F3;
+    --stage: #CFCCC5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --wall: #1A1F20;
+      --ink: #ECEAE5;
+      --muted: #A3ACAC;
+      --green: #7FB3A3;
+      --brass: #D1AE76;
+      --card: #242A2B;
+      --stage: #2B3233;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--wall);
+    color: var(--ink);
+    font: 1.0625rem/1.65 "Source Serif 4", Georgia, serif;
+  }
+  .stage {
+    position: relative;
+    height: min(78vh, 760px);
+    background: var(--stage);
+  }
+  model-viewer {
+    width: 100%;
+    height: 100%;
+    --poster-color: transparent;
+  }
+  .placard {
+    max-width: 68rem;
+    margin: -3.5rem auto 0;
+    padding: 0 1.25rem;
+    position: relative;
+  }
+  .placard-inner {
+    background: var(--card);
+    border-left: 6px solid var(--brass);
+    padding: 1.5rem 1.75rem;
+    max-width: 38rem;
+    box-shadow: 0 2px 0 rgba(0,0,0,.06);
+  }
+  h1, h2 {
+    font-family: "Archivo", "Arial Narrow", Arial, sans-serif;
+    font-stretch: 78%;
+    line-height: 1.05;
+    margin: 0;
+  }
+  h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); font-weight: 800; color: var(--green); }
+  h2 { font-size: 1.9rem; font-weight: 700; margin-bottom: .75rem; }
+  .placard p { margin: .6rem 0 0; color: var(--muted); }
+  main { max-width: 68rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  section + section { margin-top: 3.5rem; }
+  section > p { max-width: 38rem; }
+  .embed {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background: var(--stage);
+  }
+  .embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .empty {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    padding: 2rem; text-align: center; color: var(--muted);
+  }
+  .credit { font-size: .9rem; color: var(--muted); margin: .6rem 0 0; }
+  .credit a { color: var(--green); }
+  ol { max-width: 38rem; padding-left: 1.4rem; }
+  ol li { margin-bottom: .4rem; }
+  ol li::marker { font-family: "Archivo", Arial, sans-serif; font-weight: 700; color: var(--brass); }
+
+  /* Hotspots on the scan */
+  .hotspot {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid #fff;
+    background: var(--brass);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  }
+  .hotspot:focus-visible, button:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+  .label {
+    position: absolute; left: 1rem; bottom: 1rem;
+    max-width: min(24rem, calc(100% - 2rem));
+    background: var(--card); color: var(--ink);
+    border-left: 4px solid var(--brass);
+    padding: .9rem 1.1rem;
+    display: none;
+  }
+  .label.open { display: block; }
+  .label h3 { font: 700 1.2rem/1.2 "Archivo", Arial, sans-serif; font-stretch: 80%; margin: 0 1.5rem .3rem 0; }
+  .label p { margin: 0; font-size: .95rem; }
+  .label button {
+    position: absolute; top: .4rem; right: .5rem;
+    background: none; border: 0; font-size: 1.3rem; cursor: pointer; color: var(--muted);
+  }
+
+  /* Placement mode, only shown with ?place in the URL */
+  .placer {
+    position: absolute; top: 1rem; right: 1rem;
+    max-width: min(26rem, calc(100% - 2rem));
+    background: var(--card); color: var(--ink);
+    padding: .8rem 1rem; font-size: .85rem;
+    display: none;
+  }
+  .placer.on { display: block; }
+  .placer code { display: block; white-space: pre-wrap; word-break: break-all; margin-top: .4rem; }
+
+  @media (max-width: 600px) {
+    .stage { height: 62vh; }
+    .placard { margin-top: -2rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <model-viewer id="scan" src="model.glb" alt="LiDAR scan of a corner with sports memorabilia on two walls"
+    camera-controls touch-action="pan-y" shadow-intensity="0.6" exposure="1" interaction-prompt="auto">
+  </model-viewer>
+  <div class="label" id="label" role="dialog" aria-live="polite">
+    <button type="button" id="closeLabel" aria-label="Close">×</button>
+    <h3 id="labelTitle"></h3>
+    <p id="labelText"></p>
+  </div>
+  <div class="placer" id="placer">
+    Placement mode: click a spot on the scan to get its hotspot position.
+    <code id="placerOut">Nothing picked yet.</code>
+  </div>
+</div>
+
+<div class="placard">
+  <div class="placard-inner">
+    <h1>The Virtual Sports Bra</h1>
+    <p>Prototype gallery: a corner of memorabilia scanned with iPhone 14 Pro LiDAR. Drag to look around, scroll or pinch to zoom.</p>
+  </div>
+</div>
+
+<main>
+  <section>
+    <h2>Featured exhibit</h2>
+    <p>A close-up model of a single piece, shown the way each exhibit will appear in the full museum.</p>
+    <div class="embed" id="embed"></div>
+  </section>
+
+  <section>
+    <h2>How this was made</h2>
+    <ol>
+      <li>Scanned two walls meeting at a corner with the 3d Scanner App in LiDAR mode.</li>
+      <li>Processed the scan in Agisoft Metashape and exported it as a GLB model.</li>
+      <li>Hosted the model on GitHub Pages in a web 3D viewer.</li>
+      <li>Next: scan The Sports Bra itself after the memorabilia re-hang, and add placards for each piece.</li>
+    </ol>
+  </section>
+</main>
+
+<script>
+  // ---- Edit these ----
+  // Your Sketchfab model ID: the long code at the end of the model's URL.
+  const SKETCHFAB_ID = "d3e7bff9b13449c683e1123552dafdf1";
+  const SKETCHFAB_TITLE = "Ovechkin floss dispenser";
+
+  // Exhibit hotspots. Open the page with ?place at the end of the URL,
+  // click a spot on the scan, and paste the position and normal here.
+  const EXHIBITS = [
+    // { position: "0.5 1.2 -0.3", normal: "0 0 1", title: "Item name", text: "One or two sentences about it." },
+  ];
+  // --------------------
+
+  const embed = document.getElementById("embed");
+  if (SKETCHFAB_ID) {
+    embed.innerHTML = '<iframe title="' + SKETCHFAB_TITLE + '" allow="autoplay; fullscreen; xr-spatial-tracking" allowfullscreen ' +
+      'src="https://sketchfab.com/models/' + SKETCHFAB_ID + '/embed?ui_theme=dark&dnt=1"></iframe>';
+    embed.insertAdjacentHTML("afterend",
+      '<p class="credit">' + SKETCHFAB_TITLE + ', modeled by Corey Williams. ' +
+      '<a href="https://sketchfab.com/models/' + SKETCHFAB_ID + '" target="_blank" rel="noopener">View on Sketchfab</a></p>');
+  } else {
+    embed.innerHTML = '<div class="empty">Add your Sketchfab model ID to SKETCHFAB_ID in index.html to show this exhibit.</div>';
+  }
+
+  const mv = document.getElementById("scan");
+  const label = document.getElementById("label");
+  EXHIBITS.forEach((ex, i) => {
+    const b = document.createElement("button");
+    b.className = "hotspot";
+    b.slot = "hotspot-" + i;
+    b.dataset.position = ex.position;
+    b.dataset.normal = ex.normal;
+    b.setAttribute("aria-label", ex.title);
+    b.addEventListener("click", () => {
+      document.getElementById("labelTitle").textContent = ex.title;
+      document.getElementById("labelText").textContent = ex.text;
+      label.classList.add("open");
+    });
+    mv.appendChild(b);
+  });
+  document.getElementById("closeLabel").addEventListener("click", () => label.classList.remove("open"));
+
+  if (new URLSearchParams(location.search).has("place")) {
+    document.getElementById("placer").classList.add("on");
+    mv.addEventListener("click", (e) => {
+      const hit = mv.positionAndNormalFromPoint(e.clientX, e.clientY);
+      if (!hit) return;
+      document.getElementById("placerOut").textContent =
+        '{ position: "' + hit.position.toString() + '", normal: "' + hit.normal.toString() + '", title: "", text: "" },';
+    });
+  }
+</script>
+</body>
+</html>
