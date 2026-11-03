@@ -1214,7 +1214,19 @@ function loadScanBuffer(buf, name, quiet){
     if (scanRoot) scene.remove(scanRoot);
     scanRoot = gltf.scene;
     let tris = 0;
-    scanRoot.traverse(o => { if (o.isMesh){ o.castShadow = o.receiveShadow = true; const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3; } });
+    scanRoot.traverse(o => {
+      if (!o.isMesh) return;
+      const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+      // Scans carry their real-world lighting in the texture, so show them unlit.
+      // (glTF also defaults to fully metallic, which renders black without reflections.)
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const fixed = mats.map(m => {
+        const hasMap = !!(m && m.map), hasVC = !!g.attributes.color;
+        if (hasMap || hasVC) return new THREE.MeshBasicMaterial({ map: hasMap ? m.map : null, vertexColors: hasVC, side: THREE.DoubleSide });
+        return new THREE.MeshStandardMaterial({ color: (m && m.color) ? m.color : 0xcccccc, metalness: 0, roughness: 1, side: THREE.DoubleSide });
+      });
+      o.material = Array.isArray(o.material) ? fixed : fixed[0];
+    });
     scene.add(scanRoot); room.visible = false; props.visible = false;
     const box = new THREE.Box3().setFromObject(scanRoot), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
     OVERVIEW.look.copy(c);
