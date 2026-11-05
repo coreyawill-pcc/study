@@ -159,7 +159,7 @@ button{font:inherit;color:inherit}
   .brand h1 .sub{padding-left:9px}
   .pill{display:none}
   .tool .lbl{display:none}
-  #btn-load,#btn-place,#btn-copy{display:none}
+  #btn-load,#btn-place,#btn-copy,#btn-view{display:none}
   .welcome-card{padding:28px 20px 20px}
   .welcome-card h2{font-size:44px}
   .index{top:auto;bottom:calc(10px + env(safe-area-inset-bottom, 0px));left:0;right:0;width:auto;flex-direction:row;overflow-x:auto;background:none;border:0;box-shadow:none;
@@ -198,6 +198,8 @@ button{font:inherit;color:inherit}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg><span class="lbl">Place markers</span></button>
     <button class="tool" id="btn-copy" title="Copy the exhibit table as JSON">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span class="lbl">Copy exhibit data</span></button>
+    <button class="tool" id="btn-view" title="Copy the current camera view as the scan's starting view">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl">Save this view</span></button>
     <input type="file" id="file-scan" accept=".glb" hidden>
   </div>
 </header>
@@ -567,16 +569,16 @@ button{font:inherit;color:inherit}
     "capture": "Photogrammetry model (Agisoft Metashape) in a LiDAR room scan",
     "location": "Prototype corner",
     "position": [
-      0,
-      1.2,
-      0
+      -0.37,
+      -0.36,
+      0.0
     ],
     "normal": [
+      0.676,
       0,
-      0,
-      1
+      -0.737
     ],
-    "viewDistance": 0.8,
+    "viewDistance": 0.9,
     "photo": null,
     "art": null,
     "icon": "hockey",
@@ -615,6 +617,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const $ = (id) => document.getElementById(id);
 // Hosted LiDAR scan: publish it next to this page as scan.glb. Add ?sample to the URL to see the sample room instead.
 const SCAN_URL = 'scan.glb';
+// Starting view for the scan. Line up the view you want, click "Save this view", and paste the copied line over this one.
+const SCAN_VIEW = { pos: [2.40, 0.9, -2.82], look: [0.16, -0.2, -0.58] };
+// How far visitors can swing left or right from the starting view, in degrees. 0 lets them orbit all the way around.
+const SCAN_SWING = 60;
 let hostedScan = null;
 if (!new URLSearchParams(location.search).has('sample')){
   try { const r = await fetch(SCAN_URL); if (r.ok) hostedScan = await r.arrayBuffer(); } catch(e) {}
@@ -1209,6 +1215,22 @@ $('ro-move').addEventListener('click', () => {
 
 /* ---------- load a LiDAR scan (.glb) ---------- */
 $('btn-load').addEventListener('click', () => $('file-scan').click());
+// Keep the scan in front of visitors: limit sideways orbit around the starting view and turn off dragging the scene around.
+function pinView(){
+  controls.minAzimuthAngle = -Infinity; controls.maxAzimuthAngle = Infinity;
+  if (!SCAN_SWING) return;
+  const off = OVERVIEW.pos.clone().sub(OVERVIEW.look);
+  const az = Math.atan2(off.x, off.z), sw = THREE.MathUtils.degToRad(SCAN_SWING);
+  const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  controls.minAzimuthAngle = wrap(az - sw); controls.maxAzimuthAngle = wrap(az + sw);
+  controls.enablePan = false; controls.autoRotate = false;
+}
+$('btn-view').addEventListener('click', () => {
+  const r = (v) => v.toArray().map(n => +n.toFixed(3));
+  OVERVIEW.pos.copy(camera.position); OVERVIEW.look.copy(controls.target);
+  if (scanRoot) pinView();
+  copyText(`const SCAN_VIEW = { pos: [${r(camera.position)}], look: [${r(controls.target)}] };`, 'View copied. Paste it over the SCAN_VIEW line in index.html.');
+});
 function loadScanBuffer(buf, name, quiet){
   new GLTFLoader().parse(buf, '', (gltf) => {
     if (scanRoot) scene.remove(scanRoot);
@@ -1220,10 +1242,15 @@ function loadScanBuffer(buf, name, quiet){
       // Scans carry their real-world lighting in the texture, so show them unlit.
       // (glTF also defaults to fully metallic, which renders black without reflections.)
       const mats = Array.isArray(o.material) ? o.material : [o.material];
+      // Add ?lit to the URL to see the scan with the scene's lighting and shading instead.
+      const lit = new URLSearchParams(location.search).has('lit');
       const fixed = mats.map(m => {
-        const hasMap = !!(m && m.map), hasVC = !!g.attributes.color;
-        if (hasMap || hasVC) return new THREE.MeshBasicMaterial({ map: hasMap ? m.map : null, vertexColors: hasVC, side: THREE.DoubleSide });
-        return new THREE.MeshStandardMaterial({ color: (m && m.color) ? m.color : 0xcccccc, metalness: 0, roughness: 1, side: THREE.DoubleSide });
+        const map = m && m.map, hasVC = !!g.attributes.color;
+        if (map){ map.colorSpace = THREE.SRGBColorSpace; map.anisotropy = renderer.capabilities.getMaxAnisotropy(); map.needsUpdate = true; }
+        if (!lit && (map || hasVC)) return new THREE.MeshBasicMaterial({ map: map || null, vertexColors: hasVC, side: THREE.DoubleSide, toneMapped: false });
+        const c = m ? m.clone() : new THREE.MeshStandardMaterial({ color: 0xcccccc });
+        c.metalness = 0; c.roughness = Math.max(c.roughness ?? 1, 0.8); c.side = THREE.DoubleSide; c.vertexColors = hasVC;
+        return c;
       });
       o.material = Array.isArray(o.material) ? fixed : fixed[0];
     });
@@ -1232,6 +1259,8 @@ function loadScanBuffer(buf, name, quiet){
     OVERVIEW.look.copy(c);
     OVERVIEW.pos.copy(c).add(new THREE.Vector3(sz.x * 0.7 + 1, sz.y * 1.6 + 2.5, sz.z * 0.9 + 1.5));
     controls.maxDistance = Math.max(26, sz.length() * 3);
+    if (quiet && SCAN_VIEW){ OVERVIEW.pos.fromArray(SCAN_VIEW.pos); OVERVIEW.look.fromArray(SCAN_VIEW.look); }
+    if (quiet) pinView();
     if (current) closeExhibit(); else flyTo(OVERVIEW.pos, OVERVIEW.look);
     document.querySelector('.pill').textContent = `${name} · ${(tris/1000).toFixed(0)}k triangles`;
     if (!quiet) toast(`Loaded ${name}. Turn on “Place markers” to line the exhibits up with your scan.`);
@@ -1255,7 +1284,7 @@ function enterBar(){
   if (!hintHidden) $('hint').hidden = false;
 }
 if (seen){ welcome.hidden = true; $('hint').hidden = false; }
-else { controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = 0.55; $('btn-enter').focus(); }
+else { controls.autoRotate = !reduceMotion && !(hostedScan && SCAN_SWING); controls.autoRotateSpeed = 0.55; $('btn-enter').focus(); }
 $('btn-enter').addEventListener('click', enterBar);
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !welcome.hidden) enterBar(); });
 
